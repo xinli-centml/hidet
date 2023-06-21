@@ -180,9 +180,8 @@ class LlamaAttention(nn.Module):
             value_states = hidet.ops.concat([past_key_value[1], value_states], axis=2)
 
         past_key_value = (key_states, value_states)
-        query_states = query_states / math.sqrt(self.head_dim)
 
-        attn_weights = hidet.ops.matmul(query_states, key_states.transpose(2, 3))
+        attn_weights = hidet.ops.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
 
         if attention_mask is not None:
             attn_weights = attn_weights + attention_mask
@@ -439,7 +438,8 @@ def generate_torch(input_ids: str, tokenizer, torch_model, num_tokens, device='c
 def get_compiled_model(name='decapoda-research/llama-7b-hf', device='cuda', opt=False):
     tok = LlamaTokenizer.from_pretrained(name)
 
-    model = hfLm.from_pretrained(name, torch_dtype=torch.float16)
+    with torch.device("cuda"):  # reduce the time to load the model
+        model = hfLm.from_pretrained(name, torch_dtype=torch.float16)
     model.cpu()
     torch.cuda.empty_cache()
 
@@ -450,16 +450,9 @@ def get_compiled_model(name='decapoda-research/llama-7b-hf', device='cuda', opt=
     flow_graph = build_flow_graph(model, device=device)
 
     if opt:
-        with hidet.graph.PassContext() as ctx:
-            ctx.save_graph_instrument("./outs/graphs")
-            ctx.set_precision(dtype="float16")
-            ctx.set_use_attention(True)
-            ctx.set_reduce_precision(dtype="float16")
-            ctx.set_parallel_k(default=True)
-            ctx.set_mma('mma')
-            flow_graph = hidet.graph.optimize(flow_graph)
+        flow_graph = hidet.graph.optimize(flow_graph)
 
-    compiled = flow_graph.build(space=2)
+    compiled = flow_graph.build()
     return compiled, config, tok
 
 
