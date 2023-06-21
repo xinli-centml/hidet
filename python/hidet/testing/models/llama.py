@@ -180,8 +180,9 @@ class LlamaAttention(nn.Module):
             value_states = hidet.ops.concat([past_key_value[1], value_states], axis=2)
 
         past_key_value = (key_states, value_states)
+        query_states = query_states / math.sqrt(self.head_dim)
 
-        attn_weights = hidet.ops.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
+        attn_weights = hidet.ops.matmul(query_states, key_states.transpose(2, 3))
 
         if attention_mask is not None:
             attn_weights = attn_weights + attention_mask
