@@ -30,17 +30,17 @@ from hidet.utils.py import cdiv, prod
 
 class AttnMaskAddTask(Task):
     def __init__(self, name: str, q: TensorNode, k: TensorNode, v: TensorNode, mask: TensorNode):
-        q_shape = q.const_shape
-        k_shape = k.const_shape
-        v_shape = v.const_shape
-        mask_shape = mask.const_shape
+        q_shape = q.shape
+        k_shape = k.shape
+        v_shape = v.shape
+        mask_shape = mask.shape
         n_size = q_shape[-2]
         n_kv_size = k_shape[-1]
         d_size = q_shape[-1]
         o_shape = broadcast_shapes([q_shape[:-2], k_shape[:-2], v_shape[:-2]]) + [n_size, d_size]
         o_head, q_head, k_head, v_head = o_shape[:-2], q_shape[:-2], k_shape[:-2], v_shape[:-2]
         qk_head = broadcast_shape(q_head, k_head)
-        mask_shape = mask.const_shape
+        mask_shape = mask.shape
 
         qk = compute(
             name='qk',
@@ -53,7 +53,7 @@ class AttnMaskAddTask(Task):
             ),
         )
 
-        qk_shape = qk.const_shape
+        qk_shape = qk.shape
 
         qk_masked = compute(
             name='qk_masked',
@@ -171,11 +171,11 @@ class AttnMaskAddTask(Task):
             task.inputs[3],
             task.outputs[0],
         )
-        q_shape: List[int] = list(node_q.const_shape)
-        k_shape: List[int] = list(node_k.const_shape)
-        v_shape: List[int] = list(node_v.const_shape)
-        o_shape: List[int] = list(node_o.const_shape)
-        mask_shape: List[int] = list(node_mask.const_shape)
+        q_shape: List[int] = list(node_q.shape)
+        k_shape: List[int] = list(node_k.shape)
+        v_shape: List[int] = list(node_v.shape)
+        o_shape: List[int] = list(node_o.shape)
+        mask_shape: List[int] = list(node_mask.shape)
         q_head, k_head, v_head, o_head = q_shape[:-2], k_shape[:-2], v_shape[:-2], o_shape[:-2]
         qk_head = broadcast_shape(q_head, k_head)
         bs_qk = prod(qk_head)
