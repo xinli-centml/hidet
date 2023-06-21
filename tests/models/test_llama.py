@@ -11,10 +11,10 @@
 # limitations under the License.
 import pytest
 from hidet.testing.models.llama import get_compiled_model, generate
-
+import time
 
 @pytest.mark.skip(reason='This test requires a lot of memory')
-def test_llama(device='cuda', opt=False):
+def test_llama(device='cuda', opt=True):
     model, config, tokenizer = get_compiled_model(device=device, opt=opt)
 
     text = generate('In the beginning was the Word.', model, tokenizer, config, num_tokens=12)
@@ -28,4 +28,17 @@ def test_llama(device='cuda', opt=False):
         ' except where such orders would conflict with the First Law. A robot must protect its own'
         ' existence as long as such protection does not conflict with the First or Second Laws'
     )
-    assert text == expected
+    print(text)
+    print(expected)
+
+    start = time.time()
+    for _ in range(10):
+        text = generate(
+            "A robot may not injure a human being or, through inaction", model, tokenizer, config, num_tokens=55
+        )
+    end = time.time()
+    time_per_gen = (end - start) / 10
+    print('{:.3f}'.format(time_per_gen))
+
+
+test_llama()

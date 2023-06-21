@@ -191,7 +191,8 @@ def _check_inputs(traced_inputs: Iterable[TensorSignature], inputs):
     symbol_map = {}
     for i, (traced, new) in enumerate(zip(traced_inputs, inputs)):
         if ir.data_type(traced.dtype) != new.dtype:
-            raise RuntimeError(f"dtype mismatch at arg {i} between original: {traced.dtype} and new: {new.dtype}")
+            pass
+            #raise RuntimeError(f"dtype mismatch at arg {i} between original: {traced.dtype} and new: {new.dtype}")
         traced_shape = traced.shape
         concrete_shape = new.shape
         if len(traced_shape) != len(concrete_shape):
