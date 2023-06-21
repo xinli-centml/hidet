@@ -861,6 +861,7 @@ def attention(q: Tensor, k: Tensor, v: Tensor, mask: Optional[Tensor] = None, is
 
     if not (
         len(q.shape) == len(k.shape) == len(v.shape)
+        and q.shape[-1] == k.shape[-2] == v.shape[-1] 
     ):
         raise ValueError(
             'Attention expect tensor Q[..., S_q, D], K[..., D, S_kv], V[..., S_kv, D]'
