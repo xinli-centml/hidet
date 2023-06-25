@@ -13,6 +13,9 @@ import pytest
 from hidet.testing.models.llama import get_compiled_model, generate
 import time
 
+#import hidet_contrib
+#hidet_contrib.register_matmul()
+
 @pytest.mark.skip(reason='This test requires a lot of memory')
 def test_llama(device='cuda', opt=True):
     model, config, tokenizer = get_compiled_model(device=device, opt=opt)
@@ -21,7 +24,7 @@ def test_llama(device='cuda', opt=True):
     assert text == 'The Word was with God, and the Word was God.'
 
     text = generate(
-        "A robot may not injure a human being or, through inaction", model, tokenizer, config, num_tokens=55
+        "A robot may not injure a human being or, through inaction", model, tokenizer, config, num_tokens=256
     )
     expected = (
         ', allow a human being to come to harm. A robot must obey the orders given it by human beings'
@@ -34,7 +37,7 @@ def test_llama(device='cuda', opt=True):
     start = time.time()
     for _ in range(10):
         text = generate(
-            "A robot may not injure a human being or, through inaction", model, tokenizer, config, num_tokens=55
+            "A robot may not injure a human being or, through inaction", model, tokenizer, config, num_tokens=256
         )
     end = time.time()
     time_per_gen = (end - start) / 10

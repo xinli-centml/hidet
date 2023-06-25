@@ -31,9 +31,9 @@ from .attention_mask import AttnMaskAddOp
 
 class AttnTask(Task):
     def __init__(self, name: str, q: TensorNode, k: TensorNode, v: TensorNode, is_causal: bool):
-        q_shape = q.const_shape
-        k_shape = k.const_shape
-        v_shape = v.const_shape
+        q_shape = q.shape
+        k_shape = k.shape
+        v_shape = v.shape
         n_size = q_shape[-2]
         n_kv_size = k_shape[-1]
         d_size = q_shape[-1]
@@ -53,7 +53,7 @@ class AttnTask(Task):
             ),
         )
 
-        qk_shape = qk.const_shape
+        qk_shape = qk.shape
         axis = len(qk_shape) - 1
         axis_extent = qk_shape[axis]
         reduced_shape = qk_shape[:axis] + qk_shape[axis + 1 :]
@@ -156,10 +156,10 @@ class AttnTask(Task):
         task = self
         is_causal = task.attrs['is_causal']
         node_q, node_k, node_v, node_o = task.inputs[0], task.inputs[1], task.inputs[2], task.outputs[0]
-        q_shape: List[int] = list(node_q.const_shape)
-        k_shape: List[int] = list(node_k.const_shape)
-        v_shape: List[int] = list(node_v.const_shape)
-        o_shape: List[int] = list(node_o.const_shape)
+        q_shape: List[int] = list(node_q.shape)
+        k_shape: List[int] = list(node_k.shape)
+        v_shape: List[int] = list(node_v.shape)
+        o_shape: List[int] = list(node_o.shape)
         q_head, k_head, v_head, o_head = q_shape[:-2], k_shape[:-2], v_shape[:-2], o_shape[:-2]
         qk_head = broadcast_shape(q_head, k_head)
         bs_qk = prod(qk_head)

@@ -16,7 +16,7 @@ print(text)
 start = time.time()
 for _ in range(10):
     inputs = tokenizer(prompt, return_tensors="pt")
-    generate_ids = model.generate(inputs.input_ids.cuda(), max_new_tokens=55)
+    generate_ids = model.generate(inputs.input_ids.cuda(), max_new_tokens=256)
     text = tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
 end = time.time()
 time_per_gen = (end - start) / 10

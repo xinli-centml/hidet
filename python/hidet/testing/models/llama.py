@@ -157,7 +157,6 @@ class LlamaAttention(nn.Module):
     def forward(
         self,
         hidden_states: hidet.Tensor,
-        attention_mask: Optional[hidet.Tensor] = None,
         position_ids: Optional[hidet.Tensor] = None,
         past_key_value: Optional[Tuple[hidet.Tensor]] = None,
     ) -> Tuple[hidet.Tensor, Tuple[hidet.Tensor, hidet.Tensor]]:
@@ -180,16 +179,13 @@ class LlamaAttention(nn.Module):
             value_states = hidet.ops.concat([past_key_value[1], value_states], axis=2)
 
         past_key_value = (key_states, value_states)
+        query_states = query_states / math.sqrt(self.head_dim)
 
-        attn_weights = hidet.ops.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
-
-        if attention_mask is not None:
-            attn_weights = attn_weights + attention_mask
+        #if attention_mask is not None:
+        #    attn_weights = attn_weights + attention_mask
 
         # upcast attention to fp32
-        attn_weights = hidet.ops.softmax(attn_weights, axis=-1).to(query_states.dtype)
-        attn_output = hidet.ops.matmul(attn_weights, value_states)
-
+        attn_output = hidet.ops.attention(query_states, key_states.transpose(2, 3), value_states, is_causal=True)
         attn_output = attn_output.transpose(1, 2)
         attn_output = attn_output.reshape([bsz, q_len, self.hidden_size])
 
@@ -210,7 +206,6 @@ class LlamaDecoderLayer(nn.Module):
     def forward(
         self,
         hidden_states: hidet.Tensor,
-        attention_mask: Optional[hidet.Tensor] = None,
         position_ids: Optional[hidet.Tensor] = None,
         past_key_value: Optional[Tuple[hidet.Tensor]] = None,
     ) -> Tuple[hidet.Tensor, Optional[Tuple[hidet.Tensor, hidet.Tensor]]]:
@@ -221,7 +216,6 @@ class LlamaDecoderLayer(nn.Module):
         # Self Attention
         hidden_states, present_key_value = self.self_attn(
             hidden_states=hidden_states,
-            attention_mask=attention_mask,
             position_ids=position_ids,
             past_key_value=past_key_value,
         )
@@ -285,9 +279,9 @@ class LlamaModel(nn.Module):
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
 
-        attention_mask = hidet_make_causal_mask(
-            seq_length, inputs_embeds.dtype, device=inputs_embeds.device, past_key_values_length=past_key_values_length
-        )
+        # attention_mask = hidet_make_causal_mask(
+        #     seq_length, inputs_embeds.dtype, device=inputs_embeds.device, past_key_values_length=past_key_values_length
+        # )
 
         hidden_states = inputs_embeds
 
@@ -298,7 +292,7 @@ class LlamaModel(nn.Module):
             past_key_value = past_key_values[idx] if past_key_values is not None else None
 
             layer_outputs = decoder_layer(
-                hidden_states, attention_mask=attention_mask, position_ids=position_ids, past_key_value=past_key_value
+                hidden_states, position_ids=position_ids, past_key_value=past_key_value
             )
 
             hidden_states = layer_outputs[0]
@@ -451,8 +445,8 @@ def get_compiled_model(name='decapoda-research/llama-7b-hf', device='cuda', opt=
     if opt:
         with hidet.graph.PassContext() as ctx:
             ctx.save_graph_instrument("./outs/graphs")
-            ctx.set_precision(dtype="float16")
-            ctx.set_use_attention(True)
+            #ctx.set_precision(dtype="float16")
+            ctx.set_use_attention(False)
             ctx.set_reduce_precision(dtype="float16")
             ctx.set_parallel_k(default=True)
             ctx.set_mma('mma')
