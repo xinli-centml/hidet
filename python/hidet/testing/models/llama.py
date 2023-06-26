@@ -135,7 +135,7 @@ class LlamaMLP(nn.Module):
 class LlamaAttention(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
 
-    def __init__(self, config: LlamaConfig):
+    def __init__(self, config: LlamaConfig, fmha=False):
         super().__init__()
         self.config = config
         self.hidden_size = config.hidden_size
@@ -153,10 +153,12 @@ class LlamaAttention(nn.Module):
         self.v_proj = nn.Linear(self.hidden_size, self.num_heads * self.head_dim, bias=False)
         self.o_proj = nn.Linear(self.num_heads * self.head_dim, self.hidden_size, bias=False)
         self.rotary_emb = LlamaRotaryEmbedding(self.head_dim, max_position_embeddings=self.max_position_embeddings)
+        self.fmha = fmha
 
     def forward(
         self,
         hidden_states: hidet.Tensor,
+        attention_mask: Optional[hidet.Tensor] = None,
         position_ids: Optional[hidet.Tensor] = None,
         past_key_value: Optional[Tuple[hidet.Tensor]] = None,
     ) -> Tuple[hidet.Tensor, Tuple[hidet.Tensor, hidet.Tensor]]:
@@ -181,11 +183,17 @@ class LlamaAttention(nn.Module):
         past_key_value = (key_states, value_states)
         query_states = query_states / math.sqrt(self.head_dim)
 
-        #if attention_mask is not None:
-        #    attn_weights = attn_weights + attention_mask
+        if self.fmha:
+            attn_output = hidet.ops.attention(query_states, key_states.transpose(2, 3), value_states, is_causal=True)
+        else:
+            attn_weights = hidet.ops.matmul(query_states, key_states.transpose(2, 3))
+            if attention_mask is not None:
+                attn_weights = attn_weights + attention_mask
+            # upcast attention to fp32
+            attn_weights = hidet.ops.softmax(attn_weights, axis=-1).to(query_states.dtype)
+            attn_output = hidet.ops.matmul(attn_weights, value_states)
 
-        # upcast attention to fp32
-        attn_output = hidet.ops.attention(query_states, key_states.transpose(2, 3), value_states, is_causal=True)
+
         attn_output = attn_output.transpose(1, 2)
         attn_output = attn_output.reshape([bsz, q_len, self.hidden_size])
 
@@ -195,10 +203,10 @@ class LlamaAttention(nn.Module):
 
 
 class LlamaDecoderLayer(nn.Module):
-    def __init__(self, config: LlamaConfig):
+    def __init__(self, config: LlamaConfig, fmha=False):
         super().__init__()
         self.hidden_size = config.hidden_size
-        self.self_attn = LlamaAttention(config=config)
+        self.self_attn = LlamaAttention(config=config, fmha=fmha)
         self.mlp = LlamaMLP(hidden_size=self.hidden_size, intermediate_size=config.intermediate_size)
         self.input_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.post_attention_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
@@ -206,6 +214,7 @@ class LlamaDecoderLayer(nn.Module):
     def forward(
         self,
         hidden_states: hidet.Tensor,
+        attention_mask: Optional[hidet.Tensor] = None,
         position_ids: Optional[hidet.Tensor] = None,
         past_key_value: Optional[Tuple[hidet.Tensor]] = None,
     ) -> Tuple[hidet.Tensor, Optional[Tuple[hidet.Tensor, hidet.Tensor]]]:
@@ -216,6 +225,7 @@ class LlamaDecoderLayer(nn.Module):
         # Self Attention
         hidden_states, present_key_value = self.self_attn(
             hidden_states=hidden_states,
+            attention_mask=attention_mask,
             position_ids=position_ids,
             past_key_value=past_key_value,
         )
@@ -248,14 +258,15 @@ class LlamaModel(nn.Module):
         config: LlamaConfig
     """
 
-    def __init__(self, config: LlamaConfig):
+    def __init__(self, config: LlamaConfig, fmha=False):
         super().__init__()
         self.padding_idx = config.pad_token_id
         self.vocab_size = config.vocab_size
 
         self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size)
-        self.layers = nn.ModuleList([LlamaDecoderLayer(config) for _ in range(config.num_hidden_layers)])
+        self.layers = nn.ModuleList([LlamaDecoderLayer(config, fmha) for _ in range(config.num_hidden_layers)])
         self.norm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.fmha = fmha
 
     def get_input_embeddings(self):
         return self.embed_tokens
@@ -279,9 +290,12 @@ class LlamaModel(nn.Module):
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
 
-        # attention_mask = hidet_make_causal_mask(
-        #     seq_length, inputs_embeds.dtype, device=inputs_embeds.device, past_key_values_length=past_key_values_length
-        # )
+        if not self.fmha:
+            attention_mask = hidet_make_causal_mask(
+                seq_length, inputs_embeds.dtype, device=inputs_embeds.device, past_key_values_length=past_key_values_length
+            )
+        else:
+            attention_mask = None
 
         hidden_states = inputs_embeds
 
@@ -292,7 +306,7 @@ class LlamaModel(nn.Module):
             past_key_value = past_key_values[idx] if past_key_values is not None else None
 
             layer_outputs = decoder_layer(
-                hidden_states, position_ids=position_ids, past_key_value=past_key_value
+                hidden_states, attention_mask, position_ids=position_ids, past_key_value=past_key_value
             )
 
             hidden_states = layer_outputs[0]
@@ -310,7 +324,7 @@ class LlamaForCausalLM(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
-        self.model = LlamaModel(config)
+        self.model = LlamaModel(config, fmha=True)
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
     def forward(
